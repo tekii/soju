@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -42,7 +43,12 @@ func (this *Server) initialize() {
 	this.initialized = true
 	this.c = make(chan os.Signal, 1)
 	this.end = make(chan int, 1)
-	signal.Notify(this.c, os.Interrupt, os.Kill)
+	signal.Notify(
+		this.c,
+		syscall.SIGKILL,
+		syscall.SIGINT,  //Ctrl + C
+		syscall.SIGTERM, //kill command
+	)
 	this.wg = new(sync.WaitGroup)
 	go func() {
 		this.wg.Add(1) // count this gorouting as running too
