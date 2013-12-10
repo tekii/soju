@@ -19,7 +19,7 @@ type ClockService struct {
 func (this *ClockService) Start() (err error) {
 
 	//Initialize a log file for the service
-	this.LogFile, err = os.OpenFile("tmp/clockwork.txt", os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
+	this.LogFile, err = os.OpenFile("/tmp/clockwork.txt", os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
 	if err != nil {
 		return
 	}
