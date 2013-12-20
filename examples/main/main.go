@@ -10,7 +10,7 @@ import (
 
 func main() {
 
-	notificable := new(examples.ClockService)
+	notificable := examples.NewClockService("localhost:9111")
 
 	err := notificable.Start()
 	if err != nil {
@@ -20,7 +20,7 @@ func main() {
 
 	server := new(soju.Server)
 	server.AddShutdownListener(notificable)
-	server.Serve(5 * time.Second)
+	server.Serve(10 * time.Second)
 
 	return
 
