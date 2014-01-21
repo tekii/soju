@@ -20,7 +20,8 @@ func main() {
 		return
 	}
 
-	server.Serve(10*time.Second, 10*time.Second)
+	exit := server.Serve(4*time.Second, 2*time.Second)
+	fmt.Printf("Ending with exit code: %d", exit)
 
 	return
 

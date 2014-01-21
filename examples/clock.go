@@ -49,7 +49,7 @@ func NewClockService(addr string) (service *ClockService) {
 
 		//Do nothing for a couple of seconds so that there are pending
 		//requests when the process gets the kill signal.
-		time.Sleep(2 * time.Second)
+		time.Sleep(8 * time.Second)
 
 		service.Logger.Printf("the time is: %s", now.String())
 
@@ -135,6 +135,19 @@ func (cs *ClockService) Stop(doneNotifier soju.DoneNotifier) (err error) {
 }
 
 func (cs *ClockService) StopNow(doneNotifier soju.DoneNotifier) (err error) {
+
+	cs.Logger.Println("Aborted! Must stop all pending requests!")
+
+	cs.Logger.Println("Aborting the service...")
+	//Close the log file
+	err = cs.LogFile.Close()
+	if err != nil {
+		return
+	}
+
+	cs.Started = false
+
+	doneNotifier.Done()
 
 	return
 
