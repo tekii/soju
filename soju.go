@@ -70,11 +70,7 @@ func (s *Server) initialize() {
 		sig := <-s.c // wait for os.Signal
 
 		//Got signal, notify and exit
-		d := DefaultDoneNotifier{wg: s.wg}
-		d.wg.Add(1)
-		s.doneNotifiers = append(s.doneNotifiers, &d)
-		//Stop the service asynchronously so that it doesn't hang the server
-		go s.service.Stop(&d)
+		s.notify(sig, s.service)
 		//If any, notify all registered workers.
 		s.NotifyWorkers(sig)
 
@@ -97,9 +93,7 @@ func (s *Server) initialize() {
 		case <-time.After(s.stopTimeout):
 
 			//Timeout period exceded => Abort Now!
-			d := DefaultDoneNotifier{wg: s.wg}
-			d.wg.Add(1)
-			go s.service.StopNow(&d)
+			s.notify(syscall.SIGABRT, s.service)
 			//Abort all workers
 			s.NotifyWorkers(syscall.SIGABRT)
 
@@ -129,25 +123,36 @@ func (s *Server) RemoveWorker(worker Worker) {
 	// not used now
 }
 
-func (s *Server) NotifyWorkers(sig os.Signal) {
-	for _, worker := range s.workers {
-		//Create a new notifier.
-		d := DefaultDoneNotifier{wg: s.wg}
-		//Add 1 to the waiting group.
-		d.wg.Add(1)
-		s.doneNotifiers = append(s.doneNotifiers, &d)
+//Notify a single worker (or service, luckily soju.Service implements soju.Worker)
+func (s *Server) notify(sig os.Signal, worker Worker) {
 
-		//Worker methods must be called in a goroutine.
-		//If not, the shutdowns are serialized and if one of them hang the whole server hangs.
-		switch sig {
-		case syscall.SIGINT, syscall.SIGTERM:
-			//Gracefull stop
-			go worker.Stop(&d)
-		case syscall.SIGABRT:
-			//Abort now! Timeout has passed!
-			go worker.StopNow(&d)
-		}
+	//Create a new notifier.
+	d := DefaultDoneNotifier{wg: s.wg}
+	//Add 1 to the waiting group.
+	d.wg.Add(1)
+	s.doneNotifiers = append(s.doneNotifiers, &d)
+
+	//Worker methods must be called in a goroutine.
+	//If not, the shutdowns are serialized and if one of them hang the whole server hangs.
+	switch sig {
+	case syscall.SIGINT, syscall.SIGTERM:
+		//Gracefull stop
+		go worker.Stop(&d)
+	case syscall.SIGABRT:
+		//Abort now! Timeout has passed!
+		go worker.StopNow(&d)
 	}
+
+	return
+
+}
+
+//Notify all workers
+func (s *Server) NotifyWorkers(sig os.Signal) {
+	for i := range s.workers {
+		s.notify(sig, s.workers[i])
+	}
+	return
 }
 
 func (s *Server) Serve(stopTimeout, stopNowTimeout time.Duration) int {
