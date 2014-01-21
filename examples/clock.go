@@ -66,74 +66,81 @@ func NewClockService(addr string) (service *ClockService) {
 }
 
 //Wraps a net.Listener in a WaitListener and starts serving.
-func (this *ClockService) Start() (err error) {
+func (cs *ClockService) Start() (err error) {
 
 	//Initialize a log file for the service
-	this.LogFile, err = os.OpenFile("/tmp/clockwork.txt", os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
+	cs.LogFile, err = os.OpenFile("/tmp/clockwork.txt", os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
 	if err != nil {
 		return
 	}
 
-	this.Logger = log.New(this.LogFile, "ClockService > ", log.Ldate|log.Ltime|log.Lmicroseconds)
-	this.Logger.Printf("Starting ClockService")
+	cs.Logger = log.New(cs.LogFile, "ClockService > ", log.Ldate|log.Ltime|log.Lmicroseconds)
+	cs.Logger.Printf("Starting ClockService")
 
 	//Get a listener for the server address.
-	l, err := net.Listen("tcp", this.Server.Addr)
+	l, err := net.Listen("tcp", cs.Server.Addr)
 	if err != nil {
 		return
 	}
 	//Wrap the listener in a WaitListener.
-	this.wl = &soju.WaitListener{
+	cs.wl = &soju.WaitListener{
 		Listener:  l,
-		WaitGroup: &this.waitGroup,
+		WaitGroup: &cs.waitGroup,
 	}
 
-	this.Started = true
+	cs.Started = true
 
 	//This call blocks, so make it in a goroutine.
-	go this.Server.Serve(this.wl)
+	go cs.Server.Serve(cs.wl)
 
 	return
 
 }
 
-func (this *ClockService) Stop() (err error) {
+func (cs *ClockService) Stop(doneNotifier soju.DoneNotifier) (err error) {
 
-	this.Logger.Println("Closing the listener.")
+	cs.Logger.Println("Shutdown signal!")
+
+	if !cs.Started {
+		return
+	}
+
+	cs.Called = true
+
+	cs.Logger.Println("Closing the listener.")
 	//Do not accept new requests.
-	err = this.wl.Close()
+	err = cs.wl.Close()
 	if err != nil {
-		this.Logger.Printf("Error closing the listener [%s]", err.Error())
+		cs.Logger.Printf("Error closing the listener [%s]", err.Error())
 		return
 	}
 
-	this.Logger.Println("Waiting for all pending requests to finish...")
+	cs.Logger.Println("Waiting for all pending requests to finish...")
 	//Block until all requests are done.
-	this.waitGroup.Wait()
+	cs.waitGroup.Wait()
 
-	this.Logger.Println("Stopping the service...")
+	cs.Logger.Println("Stopping the service...")
 	//Close the log file
-	err = this.LogFile.Close()
+	err = cs.LogFile.Close()
 	if err != nil {
 		return
 	}
 
-	this.Started = false
+	cs.Started = false
+
+	doneNotifier.Done()
 
 	return
 
 }
 
-func (this *ClockService) Shutdown(doneNotifier soju.DoneNotifier) {
+func (cs *ClockService) StopNow(doneNotifier soju.DoneNotifier) (err error) {
 
-	this.Logger.Println("Shutdown signal!")
+	return
 
-	if this.Started {
-		this.Stop()
-	}
+}
 
-	this.Called = true
-	doneNotifier.Done()
+func (cs *ClockService) Reconfigure() (err error) {
 
 	return
 

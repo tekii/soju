@@ -10,8 +10,8 @@ type sojuTest struct {
 	Called bool
 }
 
-func (this *sojuTest) Shutdown(doneNotifier DoneNotifier) {
-	this.Called = true
+func (st *sojuTest) Shutdown(doneNotifier DoneNotifier) {
+	st.Called = true
 	doneNotifier.Done()
 }
 
@@ -19,8 +19,8 @@ type brokenSojuTest struct {
 	Called bool
 }
 
-func (this *brokenSojuTest) Shutdown(doneNotifier DoneNotifier) {
-	this.Called = true
+func (bst *brokenSojuTest) Shutdown(doneNotifier DoneNotifier) {
+	bst.Called = true
 	// not calling doneNotifier.Done() for testing timeout
 }
 

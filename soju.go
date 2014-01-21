@@ -8,65 +8,74 @@ import (
 	"time"
 )
 
-type DoneNotifier struct {
+type DoneNotifier interface {
+	Done()
+}
+
+type DefaultDoneNotifier struct {
 	called bool // avoid calling Done() more than once
 	wg     *sync.WaitGroup
+	once   sync.Once
 }
 
-func (this *DoneNotifier) Done() {
-	if this.called {
+func (dn *DefaultDoneNotifier) Done() {
+	if dn.called {
 		return
 	}
-	this.called = true
-	this.wg.Done()
-}
-
-type ShutdownListener interface {
-	Shutdown(DoneNotifier)
+	dn.called = true
+	dn.once.Do(dn.wg.Done)
+	return
 }
 
 type Server struct {
-	shutdownListeners []ShutdownListener
-	doneNotifiers     []DoneNotifier
-	c                 chan os.Signal
-	initialized       bool
-	wg                *sync.WaitGroup
-	end               chan int
-	endCode           int
-	timeout           time.Duration
+	service        Service
+	workers        []Worker
+	doneNotifiers  []DoneNotifier
+	c              chan os.Signal
+	initialized    bool
+	wg             *sync.WaitGroup
+	end            chan int
+	endCode        int
+	stopTimeout    time.Duration
+	stopNowTimeout time.Duration
 }
 
-func (this *Server) initialize() {
-	if this.initialized {
+func (s *Server) SetService(service Service) {
+	s.service = service
+	return
+}
+
+func (s *Server) initialize() {
+	if s.initialized {
 		return
 	}
-	this.initialized = true
-	this.c = make(chan os.Signal, 1)
-	this.end = make(chan int, 1)
+	s.initialized = true
+	s.c = make(chan os.Signal, 1)
+	s.end = make(chan int, 1)
 	signal.Notify(
-		this.c,
+		s.c,
 		syscall.SIGKILL,
 		syscall.SIGINT,  //Ctrl + C
 		syscall.SIGTERM, //kill command
 	)
-	this.wg = new(sync.WaitGroup)
+	s.wg = new(sync.WaitGroup)
 	go func() {
-		this.wg.Add(1) // count this gorouting as running too
-		_ = <-this.c   // wait for os.Signal
+		s.wg.Add(1) // count this gorouting as running too
+		_ = <-s.c   // wait for os.Signal
 		// got signal notify and exit
-		for _, listener := range this.shutdownListeners {
-			d := DoneNotifier{wg: this.wg}
-			this.doneNotifiers = append(this.doneNotifiers, d)
-			// Shutdown method must be called in a goroutine.
-			// if not the shutdowns are serialized and if one of them hang the whole server hangs.
-			go listener.Shutdown(d)
-		}
-		this.wg.Done() // the function is done (well not really but ...)
+		d := DefaultDoneNotifier{wg: s.wg}
+		d.wg.Add(1)
+		s.doneNotifiers = append(s.doneNotifiers, &d)
+		//Stop the service asynchronously so that it doesn't hang the server
+		go s.service.Stop(&d)
+		s.NotifyWorkers()
+
+		s.wg.Done() // the function is done (well not really but ...)
 
 		// this channel will be "signaled" when the WaitingGrup reaches 0
 		waiter := make(chan int, 1)
 		go func() {
-			this.wg.Wait()
+			s.wg.Wait()
 			waiter <- 0
 		}()
 
@@ -76,35 +85,47 @@ func (this *Server) initialize() {
 		select {
 		case ec := <-waiter:
 			// return code 0 (all routines are done)
-			this.end <- ec
-		case <-time.After(this.timeout):
+			s.end <- ec
+		case <-time.After(s.stopTimeout):
 			// timeout period exceded
-			for _, d := range this.doneNotifiers {
+			for _, d := range s.doneNotifiers {
 				// releases the waiting group using bruteforce
 				d.Done()
 			}
 			// return code 2 => timeout
-			this.end <- 2
+			s.end <- 2
 		}
 	}()
 }
 
-func (this *Server) AddShutdownListener(listener ShutdownListener) {
-	this.initialize()
-	this.shutdownListeners = append(this.shutdownListeners, listener)
-	this.wg.Add(1)
+func (s *Server) AddWorker(worker Worker) {
+	s.workers = append(s.workers, worker)
+	s.wg.Add(1)
 }
 
-func (this *Server) RemoveShutdownListener(listener ShutdownListener) {
-	// TODO: remove listener from list
+func (s *Server) RemoveWorker(worker Worker) {
+	// TODO: remove worker from list
 	// not used now
-	this.wg.Add(-1)
+	s.wg.Add(-1)
 }
 
-func (this *Server) Serve(timeout time.Duration) int {
-	this.timeout = timeout
+func (s *Server) NotifyWorkers() {
+	for _, worker := range s.workers {
+		d := DefaultDoneNotifier{wg: s.wg}
+		d.wg.Add(1)
+		s.doneNotifiers = append(s.doneNotifiers, &d)
+		// Stop method must be called in a goroutine.
+		// if not the shutdowns are serialized and if one of them hang the whole server hangs.
+		go worker.Stop(&d)
+	}
+}
+
+func (s *Server) Serve(stopTimeout, stopNowTimeout time.Duration) int {
+	s.stopTimeout = stopTimeout
+	s.stopNowTimeout = stopNowTimeout
+	s.initialize()
 	// waits on waitinggroup (forever)
-	this.wg.Wait()
+	s.wg.Wait()
 	// waits on return code channel
-	return <-this.end
+	return <-s.end
 }

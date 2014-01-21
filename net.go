@@ -12,14 +12,14 @@ type WaitListener struct {
 	WaitGroup *sync.WaitGroup
 }
 
-func (this *WaitListener) Accept() (conn net.Conn, err error) {
+func (wl *WaitListener) Accept() (conn net.Conn, err error) {
 
 	//Call Add before the event to be waited for (the connection)
-	this.WaitGroup.Add(1)
+	wl.WaitGroup.Add(1)
 	//Call the underlying listener's Accept() method.
-	c, err := this.Listener.Accept()
+	c, err := wl.Listener.Accept()
 	if err != nil {
-		this.WaitGroup.Done()
+		wl.WaitGroup.Done()
 		return
 	}
 
@@ -27,7 +27,7 @@ func (this *WaitListener) Accept() (conn net.Conn, err error) {
 	conn = &WaitConn{
 		Conn: c,
 		//Use the WaitListener's WaitGroup
-		WaitGroup: this.WaitGroup,
+		WaitGroup: wl.WaitGroup,
 	}
 
 	return
@@ -42,9 +42,9 @@ type WaitConn struct {
 	once      sync.Once
 }
 
-func (this *WaitConn) Close() error {
+func (wc *WaitConn) Close() error {
 	//Is possible to call Close() more than once?
-	defer this.once.Do(this.WaitGroup.Done)
+	defer wc.once.Do(wc.WaitGroup.Done)
 	//Close the underlying connection.
-	return this.Conn.Close()
+	return wc.Conn.Close()
 }
