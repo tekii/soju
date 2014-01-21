@@ -122,13 +122,11 @@ func (s *Server) initialize() {
 
 func (s *Server) AddWorker(worker Worker) {
 	s.workers = append(s.workers, worker)
-	s.wg.Add(1)
 }
 
 func (s *Server) RemoveWorker(worker Worker) {
 	// TODO: remove worker from list
 	// not used now
-	s.wg.Add(-1)
 }
 
 func (s *Server) NotifyWorkers(sig os.Signal) {
