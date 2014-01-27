@@ -147,12 +147,22 @@ func (s *Server) initialize() {
 // Registers a signalable worker.
 func (s *Server) AddWorker(worker Worker) {
 	s.workers = append(s.workers, worker)
+	return
 }
 
 // Deregisters a signalable worker.
 func (s *Server) RemoveWorker(worker Worker) {
-	// TODO: remove worker from list
-	// not used now
+
+	for i := range s.workers {
+		if s.workers[i] == worker {
+			copy(s.workers[i:], s.workers[i+1:])
+			s.workers[len(s.workers)-1] = nil
+			s.workers = s.workers[:len(s.workers)-1]
+		}
+	}
+
+	return
+
 }
 
 // Notify a single worker (or service, luckily soju.Service implements soju.Worker)
@@ -213,4 +223,29 @@ func (s *Server) Serve(stopTimeout, stopNowTimeout time.Duration) int {
 	// waits on return code channel
 	return <-s.end
 
+}
+
+// Default static server
+var defaultSojuServer *Server
+
+// Init the default server and set the service.
+// Allways call this method first.
+func SetService(service Service) {
+	defaultSojuServer = &Server{}
+	defaultSojuServer.SetService(service)
+	return
+}
+
+func AddWorker(worker Worker) {
+	defaultSojuServer.AddWorker(worker)
+	return
+}
+
+func RemoveWorker(worker Worker) {
+	defaultSojuServer.RemoveWorker(worker)
+	return
+}
+
+func Serve(stopTimeout, stopNowTimeout time.Duration) int {
+	return defaultSojuServer.Serve(stopTimeout, stopNowTimeout)
 }
