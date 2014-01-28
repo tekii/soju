@@ -421,3 +421,70 @@ func TestWorkerFirstTimeout(t *testing.T) {
 	}
 
 }
+
+// Registers a service and two workers
+func TestStopTwoWorkers(t *testing.T) {
+	notificable := new(sojuTest)
+	SetService(notificable)
+	if len(defaultSojuServer.workers) != 0 {
+		t.Errorf("defaultSojuServer.workers shouldn't have any workers and has %d", len(defaultSojuServer.workers))
+		return
+	}
+	w := new(workerSample)
+	AddWorker(w)
+	if len(defaultSojuServer.workers) != 1 {
+		t.Errorf("defaultSojuServer.workers should have 1 worker and has %d", len(defaultSojuServer.workers))
+		return
+	}
+	w2 := new(nonStoppingWorkerSample)
+	AddWorker(w2)
+	if len(defaultSojuServer.workers) != 2 {
+		t.Errorf("defaultSojuServer.workers should have 2 workers and has %d", len(defaultSojuServer.workers))
+		return
+	}
+
+	go func() {
+		// this goroutine waits 1/2 second and then signal the channel pretending an external signal
+		time.Sleep(time.Millisecond * 500)
+		// this can be done here because test is in the same package but this channel is private
+		defaultSojuServer.c <- syscall.SIGKILL
+	}()
+	// Serve method waits until all gorutines end
+	result := Serve(1*time.Second, 500*time.Millisecond)
+	if result != 0 {
+		t.Errorf("return code should be 2")
+		return
+	}
+	// Test service handlers.
+	if !notificable.StopCalled {
+		t.Errorf("notificable.Stop() method wasn't called.")
+		return
+	}
+	if !notificable.StopNowCalled {
+		t.Errorf("notificable.StopNow() method wasn't called.")
+		return
+	}
+
+	// Test worker handlers.
+	if !w.StopCalled {
+		t.Errorf("w.Stop() method wasn't called.")
+		return
+	}
+	if w.StopNowCalled {
+		t.Errorf("w.StopNow() method should not be called.")
+		return
+	}
+	if !w2.StopCalled {
+		t.Errorf("w2.Stop() method wasn't called.")
+		return
+	}
+	if !w2.StopNowCalled {
+		t.Errorf("w2.StopNow() method wasn't called.")
+		return
+	}
+	if len(defaultSojuServer.workers) != 0 {
+		t.Errorf("defaultSojuServer.workers shouldn't have any workers and has %d. Worker failed to de-register.", len(defaultSojuServer.workers))
+		return
+	}
+
+}
