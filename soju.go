@@ -228,24 +228,27 @@ func (s *Server) Serve(stopTimeout, stopNowTimeout time.Duration) int {
 // Default static server
 var defaultSojuServer *Server
 
-// Init the default server and set the service.
-// Allways call this method first.
+// SetService inits the default soju server and sets the service.
+// This method should always be called first when using the static default server.
 func SetService(service Service) {
 	defaultSojuServer = &Server{}
 	defaultSojuServer.SetService(service)
 	return
 }
 
+// Adds a worker to the default static server.
 func AddWorker(worker Worker) {
 	defaultSojuServer.AddWorker(worker)
 	return
 }
 
+// Removes a worker from the default static server.
 func RemoveWorker(worker Worker) {
 	defaultSojuServer.RemoveWorker(worker)
 	return
 }
 
+// Starts listening for signals.
 func Serve(stopTimeout, stopNowTimeout time.Duration) int {
 	return defaultSojuServer.Serve(stopTimeout, stopNowTimeout)
 }

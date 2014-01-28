@@ -40,7 +40,7 @@ func TestListenerOnStop(t *testing.T) {
 		return
 	}
 	go func() {
-		// this goruting waits 1/2 second and then signal the channel pretending an external signal
+		// this goroutine waits 1/2 second and then signal the channel pretending an external signal
 		time.Sleep(time.Millisecond * 500)
 		// this can be done here because test is in the same package but this channel is private
 		server.c <- os.Kill
@@ -92,7 +92,7 @@ func TestFirstTimeout(t *testing.T) {
 	notificable := new(firstTimeoutSojuTest)
 	server.SetService(notificable)
 	go func() {
-		// this goruting waits 1/2 second and then signal the channel pretending an external signal
+		// this goroutine waits 1/2 second and then signal the channel pretending an external signal
 		time.Sleep(time.Millisecond * 500)
 		// this can be done here because test is in the same package but this channel is private
 		server.c <- os.Kill
@@ -145,7 +145,7 @@ func TestSecondTimeout(t *testing.T) {
 	notificable := new(secondTimeoutSojuTest)
 	server.SetService(notificable)
 	go func() {
-		// this goruting waits 1/2 second and then signal the channel pretending an external signal
+		// this goroutine waits 1/2 second and then signal the channel pretending an external signal
 		time.Sleep(time.Millisecond * 500)
 		// this can be done here because test is in the same package but this channel is private
 		server.c <- os.Kill
@@ -196,7 +196,7 @@ func TestOnlySIGABRT(t *testing.T) {
 	notificable := new(sigabrtSojuTest)
 	server.SetService(notificable)
 	go func() {
-		// this goruting waits 1/2 second and then signal the channel pretending an external signal
+		// this goroutine waits 1/2 second and then signal the channel pretending an external signal
 		time.Sleep(time.Millisecond * 500)
 		// this can be done here because test is in the same package but this channel is private
 		server.c <- syscall.SIGABRT
@@ -247,7 +247,7 @@ func TestSIGABRTTimeout(t *testing.T) {
 	notificable := new(sigabrtTimeoutSojuTest)
 	server.SetService(notificable)
 	go func() {
-		// this goruting waits 1/2 second and then signal the channel pretending an external signal
+		// this goroutine waits 1/2 second and then signal the channel pretending an external signal
 		time.Sleep(time.Millisecond * 500)
 		// this can be done here because test is in the same package but this channel is private
 		server.c <- syscall.SIGABRT
@@ -266,4 +266,158 @@ func TestSIGABRTTimeout(t *testing.T) {
 		t.Errorf("StopNow() method was not called.")
 		return
 	}
+}
+
+type workerSample struct {
+	StopCalled, StopNowCalled bool
+}
+
+func (ws *workerSample) StopNow(dn DoneNotifier) (err error) {
+	ws.StopNowCalled = true
+	RemoveWorker(ws)
+	dn.Done()
+	return
+}
+func (ws *workerSample) Stop(dn DoneNotifier) (err error) {
+	ws.StopCalled = true
+	RemoveWorker(ws)
+	dn.Done()
+	return
+}
+
+// Registers a service and a worker
+// Signals the service
+// Notifies the worker
+// The worker runs it stop method and deregisters from the default soju server
+// Everything stops ok (returns 0)
+func TestStopWorkers(t *testing.T) {
+
+	notificable := new(sojuTest)
+	SetService(notificable)
+	if len(defaultSojuServer.workers) != 0 {
+		t.Errorf("defaultSojuServer.workers shouldn't have any workers and has %d", len(defaultSojuServer.workers))
+		return
+	}
+	w := new(workerSample)
+	AddWorker(w)
+	if len(defaultSojuServer.workers) != 1 {
+		t.Errorf("defaultSojuServer.workers should have 1 worker and has %d", len(defaultSojuServer.workers))
+		return
+	}
+
+	go func() {
+		// this goroutine waits 1/2 second and then signal the channel pretending an external signal
+		time.Sleep(time.Millisecond * 500)
+		// this can be done here because test is in the same package but this channel is private
+		defaultSojuServer.c <- syscall.SIGKILL
+	}()
+	// Serve method waits until all gorutines end
+	result := Serve(1*time.Second, 500*time.Millisecond)
+	if result != 0 {
+		t.Errorf("return code should be 2")
+		return
+	}
+	// Test service handlers.
+	if !notificable.StopCalled {
+		t.Errorf("notificable.Stop() method wasn't called.")
+		return
+	}
+	if notificable.StopNowCalled {
+		t.Errorf("notificable.StopNow() method should not be called.")
+		return
+	}
+
+	// Test worker handlers.
+	if !w.StopCalled {
+		t.Errorf("w.Stop() method wasn't called.")
+		return
+	}
+	if w.StopNowCalled {
+		t.Errorf("w.StopNow() method should not be called.")
+		return
+	}
+	if len(defaultSojuServer.workers) != 0 {
+		t.Errorf("defaultSojuServer.workers shouldn't have any workers and has %d. Worker failed to de-register.", len(defaultSojuServer.workers))
+		return
+	}
+
+}
+
+type nonStoppingWorkerSample struct {
+	StopCalled, StopNowCalled bool
+}
+
+func (ws *nonStoppingWorkerSample) StopNow(dn DoneNotifier) (err error) {
+	ws.StopNowCalled = true
+	RemoveWorker(ws)
+	dn.Done()
+	return
+}
+func (ws *nonStoppingWorkerSample) Stop(dn DoneNotifier) (err error) {
+	ws.StopCalled = true
+	// RemoveWorker(ws)
+	// dn.Done()
+	return
+}
+
+// Registers a service and a worker
+// Signals the service
+// Notifies the worker
+// The worker runs it stop method but timeouts
+// Soju calls StopNow on both service and worker
+// Worker runs StopNow and deregisters
+// Everything stops ok (returns 0)
+func TestWorkerFirstTimeout(t *testing.T) {
+
+	notificable := new(sojuTest)
+	SetService(notificable)
+	if len(defaultSojuServer.workers) != 0 {
+		t.Errorf("defaultSojuServer.workers shouldn't have any workers and has %d", len(defaultSojuServer.workers))
+		return
+	}
+	w := new(nonStoppingWorkerSample)
+	AddWorker(w)
+	if len(defaultSojuServer.workers) != 1 {
+		t.Errorf("defaultSojuServer.workers should have 1 worker and has %d", len(defaultSojuServer.workers))
+		return
+	}
+
+	go func() {
+		// this goroutine waits 1/2 second and then signal the channel pretending an external signal
+		time.Sleep(time.Millisecond * 500)
+		// this can be done here because test is in the same package but this channel is private
+		defaultSojuServer.c <- syscall.SIGKILL
+	}()
+	// Serve method waits until all gorutines end
+	result := Serve(1*time.Second, 500*time.Millisecond)
+	if result != 0 {
+		t.Errorf("return code should be 2")
+		return
+	}
+	// Test service handlers.
+	if !notificable.StopCalled {
+		t.Errorf("notificable.Stop() method wasn't called.")
+		return
+	}
+	// TODO: known issue: if service stops ok but a worker doesn't, then service's
+	// StopNow() handler is called anyways.
+	if !notificable.StopNowCalled {
+		t.Errorf("notificable.StopNow() method wasn't called.")
+		return
+	}
+
+	// Test worker handlers.
+	if !w.StopCalled {
+		t.Errorf("w.Stop() method wasn't called.")
+		return
+	}
+	if !w.StopNowCalled {
+		t.Errorf("w.StopNow() method wasn't called.")
+		return
+	}
+	if len(defaultSojuServer.workers) != 0 {
+		t.Errorf("defaultSojuServer.workers shouldn't have any workers and has %d. Worker failed to de-register.", len(defaultSojuServer.workers))
+		return
+	}
+
 }
