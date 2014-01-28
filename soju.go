@@ -158,6 +158,7 @@ func (s *Server) RemoveWorker(worker Worker) {
 			copy(s.workers[i:], s.workers[i+1:])
 			s.workers[len(s.workers)-1] = nil
 			s.workers = s.workers[:len(s.workers)-1]
+			return
 		}
 	}
 
