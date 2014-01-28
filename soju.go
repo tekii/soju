@@ -28,6 +28,10 @@ func (dn *DefaultDoneNotifier) Done() {
 // A Soju Server receives the OS signals and notifies it's service and all the registered
 // workers.
 type Server struct {
+
+	// Mutex to lock access when adding and removing workers
+	sync.Mutex
+
 	// Main service
 	service Service
 
@@ -146,12 +150,21 @@ func (s *Server) initialize() {
 
 // Registers a signalable worker.
 func (s *Server) AddWorker(worker Worker) {
+
+	s.Lock()
+	defer s.Unlock()
+
 	s.workers = append(s.workers, worker)
+
 	return
+
 }
 
 // Deregisters a signalable worker.
 func (s *Server) RemoveWorker(worker Worker) {
+
+	s.Lock()
+	defer s.Unlock()
 
 	for i := range s.workers {
 		if s.workers[i] == worker {
